@@ -2,45 +2,18 @@
  * Live auth controller for /setup and /login pages.
  *
  * Mode is read from <body data-auth-mode>. The classes below are
- * single-responsibility: RadarBlips draws the visual cue,
- * IdentityLoader populates the identity strip from the public
- * /api/identity probe, AuthForm submits credentials and translates
- * server reasons into messages. The page picks the right form
- * variant via the AuthFormFactory.
+ * single-responsibility: IdentityLoader populates the identity strip
+ * from the public /api/identity probe, AuthForm submits credentials
+ * and translates server reasons into messages. The page picks the
+ * right form variant via the AuthFormFactory.
+ *
+ * The radar visual ships sweep + center pulse only in v0.7.3. The
+ * design intent is to paint cyan blips from real concentrator RX
+ * events, which requires a deliberately-public, scrubbed event feed
+ * (no node ids, no payloads, rate-limited). That public feed is
+ * scoped to v0.7.4 so the pre-auth surface gets its own privacy
+ * review rather than being bolted onto the auth release.
  */
-
-class RadarBlips {
-    constructor(containerId) {
-        this.container = document.getElementById(containerId);
-        this.minInterval = 800;
-        this.maxInterval = 2800;
-        if (this.container) this._scheduleNext();
-    }
-
-    _scheduleNext() {
-        const delay = this.minInterval + Math.random() * (this.maxInterval - this.minInterval);
-        setTimeout(() => {
-            this._spawnBlip();
-            this._scheduleNext();
-        }, delay);
-    }
-
-    _spawnBlip() {
-        const angle = Math.random() * Math.PI * 2;
-        const fakeRssi = -120 + Math.random() * 70;
-        const normalized = Math.max(0, Math.min(1, (fakeRssi + 120) / 70));
-        const radiusPct = 12 + (1 - normalized) * 38;
-        const x = 50 + Math.cos(angle) * radiusPct;
-        const y = 50 + Math.sin(angle) * radiusPct;
-
-        const blip = document.createElement('div');
-        blip.className = 'auth-radar__blip';
-        blip.style.left = x + '%';
-        blip.style.top = y + '%';
-        this.container.appendChild(blip);
-        setTimeout(() => blip.remove(), 2400);
-    }
-}
 
 class IdentityLoader {
     constructor({ nameId, versionId, mode, redirectOnMismatch = true }) {
@@ -291,8 +264,6 @@ class AuthFormFactory {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    new RadarBlips('radar');
-
     const mode = document.body.dataset.authMode || 'login';
     new IdentityLoader({
         nameId: 'identity-name',
