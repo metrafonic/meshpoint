@@ -487,6 +487,100 @@ interfaces. `127.0.0.1` only allows access from the Pi itself.
 
 ---
 
+## Authentication
+
+### Dashboard redirects to `/setup` after upgrade
+
+**Cause:** v0.7.3 added local dashboard authentication. Every Meshpoint
+upgrading from v0.7.2 or earlier hits `/setup` once on the first browser
+visit after the upgrade, where you set an admin password. This is
+expected and one-time per device.
+
+**Fix:** Set a password (8-character minimum, no charset complexity
+required, max 256) and continue. The password is bcrypt-hashed into
+`web_auth.admin_password_hash` in `local.yaml`; subsequent visits land
+on `/login`. Sessions last 24 hours by default
+(`web_auth.session_ttl_hours`).
+
+If you would rather not see the prompt today, downgrade to v0.7.2
+(`git checkout v0.7.2 && sudo /opt/meshpoint/scripts/install.sh`).
+Disabling auth in v0.7.3 is not supported on purpose: there is no
+read-only fallback for an unauthenticated dashboard.
+
+### Locked out after too many failed login attempts
+
+**Cause:** Five consecutive bad password attempts within five minutes
+(default `web_auth.lockout_attempts: 5`,
+`web_auth.lockout_cooldown_minutes: 5`) trip a per-username in-memory
+lockout. The login page shows a live countdown driven by the
+`Retry-After` header on the 429 response.
+
+**Fix:** Wait out the countdown (default 5 minutes) and try again.
+Restarting the service (`sudo systemctl restart meshpoint`) also clears
+the lockout because the tracker is in-memory only. If you genuinely
+forgot the password, use `meshpoint reset-password` instead of
+brute-forcing it.
+
+### Forgot the dashboard password (`meshpoint reset-password`)
+
+**Cause:** No password recovery email, no security questions: the
+admin password is stored only as a bcrypt hash and there is no way to
+read it back. v0.7.3 ships a host-level recovery CLI that you run from
+SSH.
+
+**Fix:** SSH into the Pi and run:
+
+```bash
+sudo meshpoint reset-password
+```
+
+The command prompts twice for the new password (8-character minimum),
+hashes it, rotates `web_auth.jwt_secret`, bumps
+`web_auth.session_version` (which invalidates every existing browser
+session), and writes everything to `local.yaml` atomically. No service
+restart required. Open `/login` and sign in with the new password.
+
+If you also lost SSH access, the only path forward is to re-image the
+SD card and re-run `meshpoint setup`. There is no way to recover an
+admin password without host-level access by design.
+
+### Setup wizard says "Existing config/local.yaml found" on a fresh SD
+
+**Cause:** Pre-v0.7.3 RC builds eagerly persisted the auto-generated
+`web_auth.jwt_secret` to `local.yaml` on first service start, before
+the user had set a password. The setup wizard then saw the file and
+warned about overwriting an "existing" config, even on a brand-new SD.
+
+**Fix:** Update to v0.7.3 (or any commit at or after the
+`fix(auth): defer jwt_secret persist to /setup` commit). The bootstrap
+now keeps the secret in memory until `/setup` actually completes;
+`local.yaml` stays absent on a fresh install. If you already have a
+polluted `local.yaml` from an RC build, delete it before re-running
+the wizard:
+
+```bash
+sudo systemctl stop meshpoint
+sudo rm -f /opt/meshpoint/config/local.yaml
+sudo systemctl start meshpoint
+sudo meshpoint setup
+```
+
+### `4401` close code on the WebSocket / dashboard kicked back to `/login`
+
+**Cause:** Your session cookie expired, was rotated by a
+`reset-password` run, or the JWT failed verification (algorithm pinned
+to HS256, signed with `web_auth.jwt_secret`). v0.7.3 maps WebSocket
+auth failures to close code 4401 and the dashboard's WS client
+auto-redirects to `/login?next=/`.
+
+**Fix:** Sign in again. If it happens repeatedly without an idle
+session in between, check `meshpoint logs | grep -i jwt` for clock
+skew or secret-rotation events. A common trigger is two browsers
+sharing a session where one ran `reset-password` -- expected behavior,
+the other browser will get bumped.
+
+---
+
 ## MeshCore companion
 
 ### MeshCore companion not receiving packets
