@@ -25,6 +25,7 @@ RUN python3 /tmp/patch_hal.py \
 
 RUN set -eux; \
     cd /opt/sx1302_hal; \
+    make -j"$(nproc)" 2>&1 | tail -5; \
     mkdir -p pic_obj; \
     for src in libtools/src/*.c; do \
         gcc -c -O2 -fPIC -Wall -Wextra -std=c99 \
