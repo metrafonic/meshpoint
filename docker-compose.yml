@@ -1,0 +1,48 @@
+# Meshpoint — Docker Compose for Raspberry Pi 4 (64-bit OS, linux/arm64)
+#
+# Quick start:
+#   cp config/default.yaml config/local.yaml   # then edit to taste
+#   docker compose up -d
+#
+# The image must be built on the Pi (or cross-compiled with buildx):
+#   docker compose build
+#
+# Hardware notes:
+#   - SPI, I2C, and GPIO must be enabled in /boot/firmware/config.txt
+#     before starting.  Run `sudo raspi-config` -> Interface Options if
+#     you haven't already done so.
+#   - Comment out any device lines for hardware you don't have — Docker
+#     will refuse to start if a listed device path doesn't exist.
+
+services:
+  meshpoint:
+    build: .
+    platform: linux/arm64
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      CONCENTRATOR_CONFIG: /app/config/local.yaml
+      PYTHONUNBUFFERED: "1"
+      FORCE_COLOR: "1"
+      # Override RESET_GPIO if your board uses different reset pins (default: 17 25)
+      # RESET_GPIO: "17 25"
+      # Override the listen port (default: 8080)
+      # MESHPOINT_PORT: "8080"
+    volumes:
+      - ./data:/app/data
+      # local.yaml is your site-specific config; copy from config/default.yaml
+      - ./config/local.yaml:/app/config/local.yaml:ro
+    devices:
+      # SX1302 concentrator (RAK2287 / WM1303) — comment out if not using concentrator
+      - /dev/spidev0.0:/dev/spidev0.0
+      # GPIO chip for concentrator reset (GPIO 17/25) — comment out with SPI above
+      - /dev/gpiochip0:/dev/gpiochip0
+      # I2C for on-board temperature sensor — comment out if not present
+      - /dev/i2c-1:/dev/i2c-1
+      # Meshtastic serial capture (e.g. GPS UART on Pi, or SX1262 radio)
+      # - /dev/ttyAMA0:/dev/ttyAMA0
+      # MeshCore USB companion (Heltec V3/V4, T-Beam) — adjust path as needed
+      # - /dev/ttyACM0:/dev/ttyACM0
+      # Relay radio serial port (EXPERIMENTAL)
+      # - /dev/ttyACM1:/dev/ttyACM1
